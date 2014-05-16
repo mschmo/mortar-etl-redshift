@@ -1,0 +1,3 @@
+INPUT_PATH=s3://mortar-example-data/wikipedia/pagecounts-2011-07-aa
+OUTPUT_PATH=s3://mortar-example-data/wikipedia-extract/
+REDSHIFT_PARALLELIZATION=27
