@@ -4,6 +4,8 @@
 
 REGISTER '../udfs/jython/wikipedia.py' USING jython AS wikipedia;
 
+%default OUTPUT_PATH 's3://mortar-example-output-data/$MORTAR_EMAIL_S3_ESCAPED/wikipedia'
+
 -- Load data from the extract step.
 raw =  load '$OUTPUT_PATH/extract'
       using PigStorage()

@@ -2,6 +2,8 @@
   *  Step 1 - Extract all of your data from various sources and store into a staging location in S3.
   */
 
+%default OUTPUT_PATH 's3://mortar-example-output-data/$MORTAR_EMAIL_S3_ESCAPED/wikipedia'
+
 raw = load '$INPUT_PATH'
      using PigStorage(' ')
         as (
