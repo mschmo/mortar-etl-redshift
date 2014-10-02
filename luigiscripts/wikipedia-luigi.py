@@ -7,8 +7,14 @@ from luigi.s3 import S3Target, S3PathTask
 """
 This luigi pipeline builds an Amazon Redshift data warehouse from Wikipedia page view data stored in S3.
 
-To run setup client.cfg with your Mortar username and API key, your s3 keys, and your Redshift cluster
-information.
+To run, replace the value of MORTAR_PROJECT below with your actual project name. 
+Also, ensure that you have setup your secure project configuration variables:
+
+    mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
+    mortar config:set PORT=5439
+    mortar config:set DATABASE=<my-database-name>
+    mortar config:set USERNAME=<my-master-username>
+    mortar config:set PASSWORD=<my-master-username-password>
 
 TaskOrder:
     ExtractWikipediaDataTask
@@ -17,10 +23,10 @@ TaskOrder:
     ShutdownClusters
 
 To run:
-    mortar local:luigi luigiscripts/wikipedia-luigi.py
-        -p output-base-path=s3://mortar-example-output-data/<your-user-name>/wiki
-        -p input-base-path=s3://mortar-example-data/wikipedia/pagecounts-2011-07-aa
-        -p table-name=pageviews
+    mortar luigi luigiscripts/wikipedia-luigi.py \
+        --input-base-path "s3://mortar-example-data/wikipedia/pagecounts-2011-07-aa" \
+        --output-base-path "s3://<your-bucket-name>/wiki" \
+        --table-name "pageviews"
 """
 
 # helper function
@@ -29,7 +35,7 @@ def create_full_path(base_path, sub_path):
 
 
 # REPLACE WITH YOUR PROJECT NAME
-MORTAR_PROJECT = '<Your Project Name>'
+MORTAR_PROJECT = 'mortar-etl-redshift-ddaniels'
 
 
 class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
