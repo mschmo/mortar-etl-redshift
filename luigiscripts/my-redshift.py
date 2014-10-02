@@ -7,20 +7,20 @@ from luigi.s3 import S3Target, S3PathTask
 """
 This luigi pipeline builds an Amazon Redshift data warehouse.
 
-To run, setup client.cfg with your Mortar username and API key, your s3 keys, and your Redshift cluster
-information.
+To run, replace the value of MORTAR_PROJECT below with your actual project name. 
+Also, ensure that you have setup your secure project configuration variables:
 
-TaskOrder:
-    ExtractDataTask
-    TransformDataTask
-    CopyToRedshiftTask
-    ShutdownClusters
+    mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
+    mortar config:set PORT=5439
+    mortar config:set DATABASE=<my-database-name>
+    mortar config:set USERNAME=<my-master-username>
+    mortar config:set PASSWORD=<my-master-username-password>
 
 To run:
-    mortar local:luigi luigiscripts/my-redshift.py
-        -p output-base-path=s3://mortar-example-output-data/<your-user-name>/my-redshift
-        -p input-base-path=<Your input data path>
-        -p table-name=<Your Redshift table name>
+    mortar luigi luigiscripts/my-redshift.py \
+        --input-base-path "s3://<Your input data path>" \
+        --output-base-path "s3://<your-bucket>/etl" \
+        --table-name "<Your Redshift table name>"
 """
 
 # helper function
