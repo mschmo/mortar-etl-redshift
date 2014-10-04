@@ -180,10 +180,6 @@ class TransformDataTask(ETLPigscriptTask):
 class CopyToRedshiftTask(redshift.S3CopyToTable):
     """
     This task copies data from S3 to Redshift.
-    Parameters:
-        path=s3://<path to where your copy files exist>
-        manifestpath=s3://<path to manifest_file>
-        table_name = <table you wish to copy to>
     """
     # This is the Redshift table where the data will be written.
     table_name = luigi.Parameter()
