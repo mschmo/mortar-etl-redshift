@@ -7,7 +7,7 @@ from luigi.s3 import S3Target, S3PathTask
 """
 This luigi pipeline builds an Amazon Redshift data warehouse.
 
-To run, replace the value of MORTAR_PROJECT below with your actual project name. 
+To run, replace the value of MORTAR_PROJECT below with your actual project name.
 Also, ensure that you have setup your secure project configuration variables:
 
     mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
@@ -16,6 +16,12 @@ Also, ensure that you have setup your secure project configuration variables:
     mortar config:set USERNAME=<my-master-username>
     mortar config:set PASSWORD=<my-master-username-password>
 
+Task Order:
+    ExtractDataTask
+    TransformDataTask
+    CopyToRedshiftTask
+    ShutdownClusters
+
 To run:
     mortar luigi luigiscripts/my-redshift.py \
         --input-base-path "s3://<Your input data path>" \
@@ -23,15 +29,20 @@ To run:
         --table-name "<Your Redshift table name>"
 """
 
-# helper function
-def create_full_path(base_path, sub_path):
-    return '%s/%s' % (base_path, sub_path)
-
-
 # REPLACE WITH YOUR PROJECT NAME
 MORTAR_PROJECT = '<Your Project Name>'
 
+def create_full_path(base_path, sub_path):
+    """
+    Helper function for constructing paths.
+    """
+    return '%s/%s' % (base_path, sub_path)
+
+
 # REPLACE WITH YOUR REDSHIFT COLUMNS
+#
+# You need to declare the schema of your final Redshift table in order for it
+# to be created.
 REDSHIFT_COLUMNS = [
         ('language_code', 'text'),
         ('wiki_type', 'text'),
@@ -44,61 +55,114 @@ REDSHIFT_COLUMNS = [
 
 class ETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     """
-    Base class for Pigscript tasks in the ETL pipeline.
+    This is the base class for all of our Mortar related Luigi Tasks.  It extends
+    the generic MortarProjectPigscriptTask to set common defaults we'll use
+    for this pipeline: common data paths, default cluster size, and our Mortar project name.
     """
-    # s3 path to the folder where the input data is located
+
+    # The base path to where input data is located.  In most cases your input data
+    # should be stored in S3, however for testing purposes you can use a small
+    # dataset that is stored in your Mortar project.
     input_base_path = luigi.Parameter()
 
-    # s3 path to the output folder
+    # The base path to where output data will be written.  This will be an S3 path.
     output_base_path = luigi.Parameter()
 
-    # cluster size to use
+    # The cluster size to use for running Mortar jobs.  A cluster size of 0
+    # will run in Mortar's local mode.  This is a fast (and free!) way to run jobs
+    # on small data samples.  Cluster sizes >= 2 will run on a Hadoop cluster.
     cluster_size = luigi.IntParameter(default=2)
 
     def project(self):
         """
-        Name of the mortar project to run.
+        Name of your Mortar project containing this script.
         """
         return MORTAR_PROJECT
 
     def token_path(self):
+        """
+        Luigi manages dependencies between tasks by checking for the existence of
+        files.  When one task finishes it writes out a 'token' file that will
+        trigger the next task in the dependency graph.  This is the base path for
+        where those tokens will be written.
+        """
         return self.output_base_path
 
     def default_parallel(self):
-        return (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
+        """
+        This is used for an optimization that tells Hadoop how many reduce tasks should be used
+        for a Hadoop job.  By default we'll tell Hadoop to use the number of reduce slots
+        in the cluster.
+        """
+        if self.cluster_size - 1 > 0:
+            return (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
+        else:
+            return 1
 
     def number_of_files(self):
-        return  2 *  (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
+        """
+        This is used for an optimization when loading Redshift.  We can load Redshift faster by
+        splitting the data to be loaded across multiple files.
+        """
+        if self.cluster_size - 1 > 0:
+            return 2 * (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
+        else:
+            return 2;
 
 
 class ExtractDataTask(ETLPigscriptTask):
     """
-    Task that runs the data extraction script pigscripts/01-extract-data.pig.
+    This task runs the data extraction script pigscripts/01-extract-data.pig.
     """
 
+    def requires(self):
+        """
+        The requires method is how you build your dependency graph in Luigi.  Luigi will not
+        run this task until all tasks returned in this list are complete.
+
+        ExtractDataTask is the first task in our pipeline.  An empty list is
+        returned to tell Luigi that this task is always ready to run.
+        """
+        return []
+
     def script_output(self):
+        """
+        The script_output method is how you define where the output from this task will be stored.
+
+        Luigi will check this output location before starting any tasks that depend on this task.
+        """
         return [S3Target(create_full_path(self.output_base_path, 'extract'))]
 
     def parameters(self):
+        """
+        This method defines the parameters that will be passed to Mortar when starting
+        this pigscript.
+        """
         return { 'OUTPUT_PATH': self.output_base_path,
                  'INPUT_PATH': self.input_base_path,
                 }
 
     def script(self):
+        """
+        This is the name of the pigscript that will be run.
+
+        You can find this script in the pigscripts directory of your Mortar project.
+        """
         return '01-extract-data.pig'
 
 
 class TransformDataTask(ETLPigscriptTask):
     """
-    Task that runs the data transformation script pigscripts/02-transform-data.pig.
+    This task runs the data transformation script pigscripts/02-transform-data.pig.
     """
 
-    def number_of_files(self):
+    def requires(self):
         """
-        Figure out how many files to split the output into.  Will make loading data
-        into Redshift easier.
+        Tell Luigi to run the ExtractDataTask task before this task.
         """
-        return  2 * (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
+        return [ExtractDataTask(self.cluster_size,
+                                input_base_path=self.input_base_path,
+                                output_base_path=self.output_base_path)]
 
     def script_output(self):
         return [S3Target(create_full_path(self.output_base_path, 'transform'))]
@@ -107,42 +171,47 @@ class TransformDataTask(ETLPigscriptTask):
         return { 'OUTPUT_PATH': self.output_base_path,
                  'INPUT_PATH': self.input_base_path,
                  'REDSHIFT_PARALLELIZATION': self.number_of_files()
-                }
+               }
 
     def script(self):
         return '02-transform-data.pig'
 
-    def requires(self):
-        return ExtractDataTask(
-                        self.cluster_size,
-                        input_base_path=self.input_base_path,
-                        output_base_path=self.output_base_path)
-
 
 class CopyToRedshiftTask(redshift.S3CopyToTable):
     """
-    Copy data from S3 to Redshift
-
+    This task copies data from S3 to Redshift.
     Parameters:
         path=s3://<path to where your copy files exist>
         manifestpath=s3://<path to manifest_file>
         table_name = <table you wish to copy to>
     """
+    # This is the Redshift table where the data will be written.
     table_name = luigi.Parameter()
+
+    # As this task is writing to a Redshift table and not generating any output data
+    #files, this S3 location is used to store a 'token' file indicating when the task has
+    # been completed.
     output_base_path = luigi.Parameter()
 
-    # not used but required for dependent tasks
+    # This parameter is unused in this task, but it must be passed up the task dependency graph.
     input_base_path = luigi.Parameter()
 
+    # The schema of the Redshift table where the data will be written.
+    # Defined at top of this script.
     columns = REDSHIFT_COLUMNS
 
     def requires(self):
-        return TransformDataTask(
-                        cluster_size=5,
-                        input_base_path=self.input_base_path,
-                        output_base_path=self.output_base_path)
+        """
+        Tell Luigi to run the TransformDataTask task before this task.
+        """
+        return [TransformDataTask(cluster_size=5,
+                                  input_base_path=self.input_base_path,
+                                  output_base_path=self.output_base_path)]
 
     def redshift_credentials(self):
+        """
+        Returns a dictionary with the necessary fields for connecting to Redshift.
+        """
         config = configuration.get_config()
         section = 'redshift'
         return {
@@ -156,6 +225,10 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
         }
 
     def transform_path(self):
+        """
+        Helper function that returns the root directory where the transformed output
+        has been stored.  This is the data that will be copied to Redshift.
+        """
         return create_full_path(self.output_base_path, 'transform')
 
     def s3_load_path(self):
@@ -164,6 +237,10 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
         came from the output of the transform step.
         """
         return create_full_path(self.transform_path(), 'part')
+
+    """
+    Property methods for connecting to Redshift.
+    """
 
     @property
     def aws_access_key_id(self):
@@ -200,22 +277,38 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
 
 class ShutdownClusters(mortartask.MortarClusterShutdownTask):
     """
-    When the pipeline is completed, shut down all active clusters not currently running jobs
+    This is the very last task in the pipeline.  It will shut down all active
+    clusters that are not currently running jobs.
     """
 
-    # unused, but must be passed through
+    # These parameters are not used by this task, but passed through for earlier tasks to use.
     input_base_path = luigi.Parameter()
     table_name = luigi.Parameter()
 
-    # s3 path to the output folder
+    # As this task is only shutting down clusters and not generating any output data,
+    # this S3 location is used to store a 'token' file indicating when the task has
+    # been completed.
     output_base_path = luigi.Parameter()
 
     def requires(self):
-        return [CopyToRedshiftTask(input_base_path=self.input_base_path, output_base_path=self.output_base_path, table_name=self.table_name)]
+        """
+        Tell Luigi that the CopyToRedshiftTask task needs to be completed
+        before running this task.
+        """
+        return [CopyToRedshiftTask(input_base_path=self.input_base_path,
+                                   output_base_path=self.output_base_path,
+                                   table_name=self.table_name)]
 
     def output(self):
         return [S3Target(create_full_path(self.output_base_path, self.__class__.__name__))]
 
 
 if __name__ == "__main__":
+    """
+    We tell Luigi to run the last task in the task dependency graph.  Luigi will then
+    work backwards to find any tasks with its requirements met and start from there.
+
+    The first time this pipeline is run the only task with its requirements met will be
+    ExtractDataTask which does not have any dependencies.
+    """
     luigi.run(main_task_cls=ShutdownClusters)
