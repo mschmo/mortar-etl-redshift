@@ -7,7 +7,7 @@ from luigi.s3 import S3Target, S3PathTask
 """
 This luigi pipeline builds an Amazon Redshift data warehouse from Wikipedia page view data stored in S3.
 
-To run, replace the value of MORTAR_PROJECT below with your actual project name. 
+To run, replace the value of MORTAR_PROJECT below with your actual project name.
 Also, ensure that you have setup your secure project configuration variables:
 
     mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
@@ -94,12 +94,12 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
         if self.cluster_size - 1 > 0:
             return 2 * (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
         else:
-            return 2;
+            return 2
 
 
 class ExtractWikipediaDataTask(WikipediaETLPigscriptTask):
     """
-    This task runs the data extraction script pigscripts/01-extract-data.pig.
+    This task runs the data extraction script pigscripts/01-wiki-extract-data.pig.
     """
 
     def requires(self):
@@ -167,7 +167,7 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
     """
     This task copies data from S3 to Redshift.
     """
-    
+
     # This is the Redshift table where the data will be written.
     table_name = luigi.Parameter()
 
@@ -276,9 +276,9 @@ class ShutdownClusters(mortartask.MortarClusterShutdownTask):
 
     # As this task is only shutting down clusters and not generating any output data,
     # this S3 location is used to store a 'token' file indicating when the task has
-    # been completed.    
+    # been completed.
     output_base_path = luigi.Parameter()
-    
+
     def requires(self):
         """
         Tell Luigi that the CopyToRedshiftTask task needs to be completed

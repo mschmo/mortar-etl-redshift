@@ -71,7 +71,7 @@ class ETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     # The cluster size to use for running Mortar jobs.  A cluster size of 0
     # will run in Mortar's local mode.  This is a fast (and free!) way to run jobs
     # on small data samples.  Cluster sizes >= 2 will run on a Hadoop cluster.
-    cluster_size = luigi.IntParameter(default=2)
+    cluster_size = luigi.IntParameter(default=5)
 
     def project(self):
         """
@@ -107,7 +107,7 @@ class ETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
         if self.cluster_size - 1 > 0:
             return 2 * (self.cluster_size - 1) * mortartask.NUM_REDUCE_SLOTS_PER_MACHINE
         else:
-            return 2;
+            return 2
 
 
 class ExtractDataTask(ETLPigscriptTask):
@@ -160,8 +160,7 @@ class TransformDataTask(ETLPigscriptTask):
         """
         Tell Luigi to run the ExtractDataTask task before this task.
         """
-        return [ExtractDataTask(self.cluster_size,
-                                input_base_path=self.input_base_path,
+        return [ExtractDataTask(input_base_path=self.input_base_path,
                                 output_base_path=self.output_base_path)]
 
     def script_output(self):
@@ -185,7 +184,7 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
     table_name = luigi.Parameter()
 
     # As this task is writing to a Redshift table and not generating any output data
-    #files, this S3 location is used to store a 'token' file indicating when the task has
+    # files, this S3 location is used to store a 'token' file indicating when the task has
     # been completed.
     output_base_path = luigi.Parameter()
 
@@ -200,8 +199,7 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
         """
         Tell Luigi to run the TransformDataTask task before this task.
         """
-        return [TransformDataTask(cluster_size=5,
-                                  input_base_path=self.input_base_path,
+        return [TransformDataTask(input_base_path=self.input_base_path,
                                   output_base_path=self.output_base_path)]
 
     def redshift_credentials(self):
