@@ -1,5 +1,5 @@
 # 
-# This is the configuration file your Luigi pipelines.
+# This is the configuration file for your Luigi pipelines.
 #
 # When you run "mortar local:luigi" or "mortar luigi", Mortar will expand
 # the variables in this file (e.g. MORTAR_EMAIL) to their actual values
