@@ -172,7 +172,7 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
     table_name = luigi.Parameter()
 
     # As this task is writing to a Redshift table and not generating any output data
-    #files, this S3 location is used to store a 'token' file indicating when the task has
+    # files, this S3 location is used to store a 'token' file indicating when the task has
     # been completed.
     output_base_path = luigi.Parameter()
 
