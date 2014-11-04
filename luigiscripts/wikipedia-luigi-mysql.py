@@ -62,7 +62,7 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     """
     This is the base class for all of our Mortar related Luigi Tasks.  It extends
     the generic MortarProjectPigscriptTask to set common defaults we'll use
-    for this pipeline: common data paths, default cluster size, and our Mortar project name.
+    for this pipeline: common data paths and default cluster size.
     """
 
     # The base path to where output data will be written.  This will be an S3 path.
