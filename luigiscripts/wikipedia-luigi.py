@@ -7,8 +7,7 @@ from luigi.s3 import S3Target, S3PathTask
 """
 This luigi pipeline builds an Amazon Redshift data warehouse from Wikipedia page view data stored in S3.
 
-To run, replace the value of MORTAR_PROJECT below with your actual project name.
-Also, ensure that you have setup your secure project configuration variables:
+To run, ensure that you have setup your secure project configuration variables:
 
     mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
     mortar config:set PORT=5439
@@ -44,7 +43,7 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     """
     This is the base class for all of our Mortar related Luigi Tasks.  It extends
     the generic MortarProjectPigscriptTask to set common defaults we'll use
-    for this pipeline: common data paths, default cluster size, and our Mortar project name.
+    for this pipeline: common data paths, and default cluster size.
     """
 
     # The base path to where input data is located.  In most cases your input data
@@ -59,12 +58,6 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     # will run in Mortar's local mode.  This is a fast (and free!) way to run jobs
     # on small data samples.  Cluster sizes >= 2 will run on a Hadoop cluster.
     cluster_size = luigi.IntParameter(default=5)
-
-    def project(self):
-        """
-        Name of your Mortar project containing this script.
-        """
-        return MORTAR_PROJECT
 
     def token_path(self):
         """
