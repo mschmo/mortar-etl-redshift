@@ -43,3 +43,13 @@ username: ${USERNAME}
 password: ${PASSWORD}
 aws_access_key_id:  ${AWS_ACCESS_KEY_ID}
 aws_secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+
+# 
+# Credentials to connect to MySQL.
+#
+[mysql]
+dbname=${MYSQL_DBNAME}
+host=${MYSQL_HOST}
+port=3306
+user=${MYSQL_USER}
+password=${MYSQL_PASSWORD}

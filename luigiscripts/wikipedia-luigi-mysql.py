@@ -1,30 +1,55 @@
 import luigi
 from luigi import configuration
 from luigi.contrib import redshift
-from mortar.luigi import mortartask
 from luigi.s3 import S3Target, S3PathTask
 
+from mortar.luigi import dbms
+from mortar.luigi import mortartask
+
+import logging
+logger = logging.getLogger('luigi-interface')
+
 """
-This luigi pipeline builds an Amazon Redshift data warehouse from Wikipedia page view data stored in S3.
+This luigi pipeline builds an Amazon Redshift data warehouse from Wikipedia 
+page view data stored in MySQL.
 
-To run, replace the value of MORTAR_PROJECT below with your actual project name.
-Also, ensure that you have setup your secure project configuration variables:
+Instructions to Use:
 
+1. Install the example wiki table into your MySQL database. You can download SQL
+   statements to create and populate the table from 
+   https://s3.amazonaws.com/mortar-example-data/wikipedia-mysql/mysql-wiki-data.tar.gz
+
+2. Replace the value of MORTAR_PROJECT below with your actual project name.
+
+3. Ensure that you have setup your secure project configuration variables:
+
+    # Target Redshift database
     mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
     mortar config:set PORT=5439
     mortar config:set DATABASE=<my-database-name>
     mortar config:set USERNAME=<my-master-username>
     mortar config:set PASSWORD=<my-master-username-password>
 
+    # Source MySQL database
+    mortar config:set MYSQL_DBNAME=<my-mysql-database-name>
+    mortar config:set MYSQL_HOST=<my-mysql-host-name>
+    mortar config:set MYSQL_USER=<my-mysql-username>
+    mortar config:set MYSQL_PASSWORD=<my-mysql-password>
+
+4. Move the client.cfg.template with additional MySQL configuration items
+   into place:
+
+    cp luigiscripts/mysql.client.cfg.template luigiscripts/client.cfg.template
+
 TaskOrder:
-    ExtractWikipediaDataTask
+    ExtractFromMySQL
     TransformWikipediaDataTask
     CopyToRedshiftTask
     ShutdownClusters
 
-To run:
-    mortar luigi luigiscripts/wikipedia-luigi.py \
-        --input-base-path "s3://mortar-example-data/wikipedia/pagecounts-2011-07-aa" \
+To run the pipeline:
+
+    mortar luigi luigiscripts/wikipedia-luigi-mysql.py \
         --output-base-path "s3://<your-bucket-name>/wiki" \
         --table-name "pageviews"
 """
@@ -32,13 +57,11 @@ To run:
 # REPLACE WITH YOUR PROJECT NAME
 MORTAR_PROJECT = '<Your Project Name>'
 
-
 def create_full_path(base_path, sub_path):
     """
     Helper function for constructing paths.
     """
     return '%s/%s' % (base_path, sub_path)
-
 
 class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     """
@@ -46,11 +69,6 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     the generic MortarProjectPigscriptTask to set common defaults we'll use
     for this pipeline: common data paths, default cluster size, and our Mortar project name.
     """
-
-    # The base path to where input data is located.  In most cases your input data
-    # should be stored in S3, however for testing purposes you can use a small
-    # dataset that is stored in your Mortar project.
-    input_base_path = luigi.Parameter()
 
     # The base path to where output data will be written.  This will be an S3 path.
     output_base_path = luigi.Parameter()
@@ -96,66 +114,32 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
         else:
             return 2
 
-
-class ExtractWikipediaDataTask(WikipediaETLPigscriptTask):
-    """
-    This task runs the data extraction script pigscripts/01-wiki-extract-data.pig.
-    """
-
-    def requires(self):
-        """
-        The requires method is how you build your dependency graph in Luigi.  Luigi will not
-        run this task until all tasks returned in this list are complete.
-
-        ExtractWikipediaDataTask is the first task in our pipeline.  An empty list is
-        returned to tell Luigi that this task is always ready to run.
-        """
-        return []
-
-    def script_output(self):
-        """
-        The script_output method is how you define where the output from this task will be stored.
-
-        Luigi will check this output location before starting any tasks that depend on this task.
-        """
-        return [S3Target(create_full_path(self.output_base_path, 'extract'))]
-
-    def parameters(self):
-        """
-        This method defines the parameters that will be passed to Mortar when starting
-        this pigscript.
-        """
-        return { 'OUTPUT_PATH': self.output_base_path,
-                 'INPUT_PATH': self.input_base_path,
-                }
-
-    def script(self):
-        """
-        This is the name of the pigscript that will be run.
-
-        You can find this script in the pigscripts directory of your Mortar project.
-        """
-        return '01-wiki-extract-data.pig'
-
-
 class TransformWikipediaDataTask(WikipediaETLPigscriptTask):
     """
     This task runs the data transformation script pigscripts/02-wiki-transform-data.pig.
     """
 
+    # Table name where wiki data is stored in MySQL
+    mysql_table_name = luigi.Parameter(default='wiki')
+
     def requires(self):
         """
-        Tell Luigi to run the ExtractWikipediaDataTask task before this task.
+        Tell Luigi to run the MySQL data extraction before this task.
         """
-        return [ExtractWikipediaDataTask(input_base_path=self.input_base_path,
-                                         output_base_path=self.output_base_path)]
+        extract_output_path = create_full_path(self.output_base_path, 'extract')
+        return [
+            dbms.ExtractFromMySQL(
+                table=self.mysql_table_name,
+                columns='wiki_code, article, encoded_hourly_pageviews',
+                output_path=extract_output_path,
+                raw=True)
+        ]
 
     def script_output(self):
         return [S3Target(create_full_path(self.output_base_path, 'transform'))]
 
     def parameters(self):
         return { 'OUTPUT_PATH': self.output_base_path,
-                 'INPUT_PATH': self.input_base_path,
                  'REDSHIFT_PARALLELIZATION': self.number_of_files()
                 }
 
@@ -176,9 +160,6 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
     # been completed.
     output_base_path = luigi.Parameter()
 
-    # This parameter is unused in this task, but it must be passed up the task dependency graph.
-    input_base_path = luigi.Parameter()
-
     # The schema of the Redshift table where the data will be written.
     columns =[
         ('wiki_code', 'text'),
@@ -194,8 +175,7 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
         """
         Tell Luigi to run the TransformWikipediaDataTask task before this task.
         """
-        return [TransformWikipediaDataTask(input_base_path=self.input_base_path,
-                                           output_base_path=self.output_base_path)]
+        return [TransformWikipediaDataTask(output_base_path=self.output_base_path)]
 
     def redshift_credentials(self):
         """
@@ -271,7 +251,7 @@ class ShutdownClusters(mortartask.MortarClusterShutdownTask):
     """
 
     # These parameters are not used by this task, but passed through for earlier tasks to use.
-    input_base_path = luigi.Parameter()
+    # Redshift table name
     table_name = luigi.Parameter()
 
     # As this task is only shutting down clusters and not generating any output data,
@@ -284,8 +264,7 @@ class ShutdownClusters(mortartask.MortarClusterShutdownTask):
         Tell Luigi that the CopyToRedshiftTask task needs to be completed
         before running this task.
         """
-        return [CopyToRedshiftTask(input_base_path=self.input_base_path,
-                                   output_base_path=self.output_base_path,
+        return [CopyToRedshiftTask(output_base_path=self.output_base_path,
                                    table_name=self.table_name)]
 
     def output(self):
