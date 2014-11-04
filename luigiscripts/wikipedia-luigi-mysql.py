@@ -19,9 +19,7 @@ Instructions to Use:
    statements to create and populate the table from 
    https://s3.amazonaws.com/mortar-example-data/wikipedia-mysql/mysql-wiki-data.tar.gz
 
-2. Replace the value of MORTAR_PROJECT below with your actual project name.
-
-3. Ensure that you have setup your secure project configuration variables:
+2. Ensure that you have setup your secure project configuration variables:
 
     # Target Redshift database
     mortar config:set HOST=<my-endpoint.redshift.amazonaws.com>
@@ -36,7 +34,7 @@ Instructions to Use:
     mortar config:set MYSQL_USER=<my-mysql-username>
     mortar config:set MYSQL_PASSWORD=<my-mysql-password>
 
-4. Move the client.cfg.template with additional MySQL configuration items
+3. Move the client.cfg.template with additional MySQL configuration items
    into place:
 
     cp luigiscripts/mysql.client.cfg.template luigiscripts/client.cfg.template
@@ -53,9 +51,6 @@ To run the pipeline:
         --output-base-path "s3://<your-bucket-name>/wiki" \
         --table-name "pageviews"
 """
-
-# REPLACE WITH YOUR PROJECT NAME
-MORTAR_PROJECT = '<Your Project Name>'
 
 def create_full_path(base_path, sub_path):
     """
@@ -77,12 +72,6 @@ class WikipediaETLPigscriptTask(mortartask.MortarProjectPigscriptTask):
     # will run in Mortar's local mode.  This is a fast (and free!) way to run jobs
     # on small data samples.  Cluster sizes >= 2 will run on a Hadoop cluster.
     cluster_size = luigi.IntParameter(default=5)
-
-    def project(self):
-        """
-        Name of your Mortar project containing this script.
-        """
-        return MORTAR_PROJECT
 
     def token_path(self):
         """
