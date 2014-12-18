@@ -254,8 +254,24 @@ class CopyToRedshiftTask(redshift.S3CopyToTable):
 
     @property
     def copy_options(self):
+        '''Add extra copy options, for example:
+
+         GZIP
+         TIMEFORMAT 'auto'
+         IGNOREHEADER 1
+         TRUNCATECOLUMNS
+         IGNOREBLANKLINES
+        '''
         return 'GZIP'
 
+    def table_attributes(self):
+        '''Add extra table attributes, for example:
+
+        DISTSTYLE KEY
+        DISTKEY (MY_FIELD)
+        SORTKEY (MY_FIELD_2, MY_FIELD_3)
+        '''
+        return 'DISTSTYLE EVEN'
 
 class ShutdownClusters(mortartask.MortarClusterShutdownTask):
     """
