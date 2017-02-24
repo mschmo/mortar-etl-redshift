@@ -1,7 +1,7 @@
 /**
   *  Step 1 - Extract all of your data from various sources and store into a staging location in S3.
   *
-  *  See http:://help.mortardata.com/data_apps/redshift_data_warehouse/extract_your_data for help.
+  *  See http://help.mortardata.com/data_apps/redshift_data_warehouse/extract_your_data for help.
   */
 
 data = <Your Load Statement Goes Here>
